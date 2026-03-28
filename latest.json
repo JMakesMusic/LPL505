@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "notes": "Auto-update system implementation.",
+  "pub_date": "2026-03-19T04:20:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeWZaRUhMUU14ajlFblljUDlDMzZzTFgrc1UzdnRieVpIb1NTa2l2RXhNZXdLMFVCUVhpY2o4ek5qUnN6c1lDVTY5Wnh2akh3WVdiM1JkbXdMQ1FZMFN3bU1iSUZsRFE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczODkzOTIxCWZpbGU6TFBMNTA1LmFwcC50YXIuZ3oKdUd4UWpJNDJWZkQ3dDRNZlEzM1NRNWJ4SHE5aEJCeGcvNEZxTGs3NDNZSWJLTE85YUJReTc1dmhqelhmTnp4TXg1M2VYRFV1R2d6UHVDSmFyNURYQUE9PQo=",
+      "url": "https://github.com/JMakesMusic/LPL505/releases/download/LPL505-v1.0.0/LPL505_aarch64.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeWZaRUhMUU14ajYxb2NlYlJIVm03NW9Za1I5R1RnWitHeGRwTUc5anVQSFVuUHF6MG1nMmQ1Y0xNbXVnaVBWajBoMGU1MTJERTI3Nk9pZG9yaTdLNzVjVkQ2TzhnZGdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczODkzODQ2CWZpbGU6TFBMNTA1LmFwcC50YXIuZ3oKNk1TM0xXWThuUmF6ZkJUR3BPR2czb01UVnpLb2V2V2MyamJkcjQ3dVA4SnI0NVFQcXJ6aDI4YUZrdDdFRUJFYVdUZEh6Qm1aVnkrdVU0WVdEb1lKREE9PQo=",
+      "url": "https://github.com/JMakesMusic/LPL505/releases/download/LPL505-v1.0.0/LPL505_x64.app.tar.gz"
+    },
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeWZaRUhMUU14ajdVY3p0aU96Vm9ERkZwdUhucXVhVFNwZ0UrejQwVzJQU2QrZTRhYnNSUkRBc2g2R0M5YzRpemQvejByS20wbE1kVmhwKy9JaU5GbU1rcWgveW8vakFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczODk0MDUzCWZpbGU6TFBMNTA1XzEuMS4wLTJfeDY0X2VuLVVTLm1zaQpyRzc3cEwyT3c5dzB0YURCZ29LRllCMUxiWnZ5RzNvMXlnTHQ5bFNyRTQzUDAyaG9IRXRtQitRUFpoQnhlaDR2aSt3MXp2TUZXMzBsNTlhdTRHTkVCZz09Cg==",
+      "url": "https://github.com/JMakesMusic/LPL505/releases/download/LPL505-v1.0.0/LPL505_1.0.0_x64_en-US.msi"
+    }
+  }
+}
