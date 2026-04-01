@@ -35,7 +35,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRGQjhDMTFERjhCRjZGMzYKUldRMmI3LzRIY0c0VDQxQzVrMjRPdjdHNUEwbG5XL2xFK0NuczJDYkFsSWtTL21vcWRxMGdsM1AK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE2RTBGNUM1QjUyQ0EzMzAKUldRd295eTF4ZlhncHJIMk5aSm14WUZaV0U1WDBTTjJudG9vemxtWkVCZGRhemIyNm1KNlZRci8K",
       "endpoints": [
         "https://github.com/JMakesMusic/LPL505/releases/latest/download/latest.json"
       ]
