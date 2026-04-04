@@ -46,6 +46,7 @@ jobs:
         run: npm ci
 
       - name: build tauri app
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,4 +59,30 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload portable executable
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.tauri.outputs.appVersion }}"
+          TAG="LPL505-v$VERSION"
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            cd src-tauri/target/release
+            # compress plain executable
+            7z a LPL505-v${VERSION}-portable-windows.zip lpl505.exe
+            gh release upload "$TAG" LPL505-v${VERSION}-portable-windows.zip --clobber
+          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            cd src-tauri/target/release
+            tar -czvf LPL505-v${VERSION}-portable-linux.tar.gz lpl505
+            gh release upload "$TAG" LPL505-v${VERSION}-portable-linux.tar.gz --clobber
+          elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            TARGET="${{ matrix.args == '--target aarch64-apple-darwin' && 'aarch64-apple-darwin' || 'x86_64-apple-darwin' }}"
+            cd src-tauri/target/$TARGET/release
+            # tauri creates an app bundle. The portable version is the app bundle itself.
+            # actually we can zip the .app folder
+            cd bundle/macos
+            zip -r LPL505-v${VERSION}-portable-${TARGET}.zip LPL505.app || true
+            gh release upload "$TAG" LPL505-v${VERSION}-portable-${TARGET}.zip --clobber || true
+          fi
+
 
