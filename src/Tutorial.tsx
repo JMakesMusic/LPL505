@@ -9,20 +9,20 @@ interface TutorialStep {
   position?: 'bottom' | 'top' | 'left' | 'right' | 'center';
   clickThrough?: boolean;
   advanceOnClick?: boolean;
-  pad?: number; // Optional custom padding for this step's spotlight
+  pad?: number;
 }
 
 const STEPS: TutorialStep[] = [
   {
     title: 'Connect Your RC-505mk2',
-    body: 'First, connect your Boss RC-505mk2. Click the MIDI button to open MIDI Settings, then select your device as the Input (for clock sync) and Output (to send CC messages).',
+    body: 'First, connect your Boss RC-505mk2. Click the MIDI button to open MIDI Settings, then select RC-505mk2 as the Input (for clock sync) and Output (to send CC messages).',
     targetSelector: '[data-tutorial="midi-btn"]',
     position: 'bottom',
     clickThrough: true,
   },
   {
     title: 'Create Your First Element',
-    body: 'Click the "Add" button to create elements on your canvas. You can place buttons and faders anywhere to build your custom control surface.',
+    body: 'Click the "Add" button to create elements on your canvas. You can place buttons and faders anywhere to build your own customized control surface.',
     targetSelector: '[data-tutorial="add-btn"]',
     position: 'bottom',
     clickThrough: true,
@@ -36,6 +36,7 @@ const STEPS: TutorialStep[] = [
         <div><strong style={{ color: 'var(--accent-base)' }}>Free Button</strong>: Sends any CC/value message for generic MIDI control</div>
         <div><strong style={{ color: 'var(--accent-base)' }}>Memory Button</strong>: Triggers memory (patch) changes via Program Change messages</div>
         <div><strong style={{ color: 'var(--accent-base)' }}>Fader</strong>: A vertical slider that sends continuous CC values, with optional keybinds and glide</div>
+        <div><strong style={{ color: 'var(--accent-base)' }}>MIDI Loop</strong>: A loop that sends MIDI notes to the RC-505mk2 to control OSC Voc (M). Has a piano roll editor to edit the notes.</div>
       </div>
     ),
     targetSelector: '.create-dropdown',
@@ -43,7 +44,7 @@ const STEPS: TutorialStep[] = [
   },
   {
     title: 'Edit Your Layout',
-    body: 'In Edit mode, use this toggle to switch between customising and performing. Click any element to select it and open the Config Panel on the side. Drag elements to reposition them, and use the handle to resize.',
+    body: "Edit mode is the mode you're in now, and is used to prepare your control surface for performing. Click any element to select it and open the Config Panel on the side. Drag elements to reposition them, and use the handle to resize.",
     targetSelector: '[data-tutorial="edit-segment"]',
     position: 'center',
     clickThrough: true,
@@ -51,7 +52,7 @@ const STEPS: TutorialStep[] = [
   },
   {
     title: 'Go Live!',
-    body: 'Switch to Perform mode to trigger your elements. Click buttons or use keyboard shortcuts to fire MIDI messages. Drag faders to send live CC values. The toolbar hides away so you can focus on performing.',
+    body: "Switch to Perform mode using tab when you're ready to start looping. Clicking buttons in this mode or using keyboard shortcuts will fire MIDI messages. Drag faders to send live CC values. The toolbar hides away so you don't accidentally misclick mid-track.",
     targetSelector: '[data-tutorial="mode-toggle"]',
     position: 'bottom',
     clickThrough: true,
@@ -208,7 +209,17 @@ const Tutorial: React.FC<TutorialProps> = ({ step, onNext, onAdvanceOnly, onBack
       }, 50);
       return () => clearTimeout(timer);
     } else {
-      measure();
+      // Defer measure on step change so the DOM (and new targets) update first
+      let reqId: number;
+      const timer = setTimeout(() => {
+        reqId = requestAnimationFrame(() => {
+          measure();
+        });
+      }, 20);
+      return () => {
+        clearTimeout(timer);
+        if (reqId) cancelAnimationFrame(reqId);
+      };
     }
   }, [step, measure, isInitialMount]);
 
@@ -226,48 +237,49 @@ const Tutorial: React.FC<TutorialProps> = ({ step, onNext, onAdvanceOnly, onBack
   const hasMeasuredSpotlight = spotlight !== null && spotlight.w > 0 && spotlight.h > 0;
 
   return (
-    <div className="tutorial-overlay" style={{ pointerEvents: 'none', opacity: isInitialMount ? 0 : 1 }}>
-      {hasSpotlightTarget ? (
-        <React.Fragment>
+    <React.Fragment>
+      <div className="tutorial-overlay" style={{ opacity: isInitialMount ? 0 : 1 }}>
+        {hasSpotlightTarget ? (
+          <React.Fragment>
+            <div
+              className="tutorial-spotlight-hole"
+              style={hasMeasuredSpotlight ? {
+                width: spotlight!.w,
+                height: spotlight!.h,
+                transform: `translate3d(${spotlight!.cx}px, ${spotlight!.cy}px, 0) translate3d(-50%, -50%, 0)`,
+              } : { opacity: 0 }}
+            />
+            <div
+              className="tutorial-spotlight-ring"
+              style={hasMeasuredSpotlight ? {
+                width: spotlight!.w, height: spotlight!.h,
+                transform: `translate3d(${spotlight!.cx}px, ${spotlight!.cy}px, 0) translate3d(-50%, -50%, 0)`,
+              } : { opacity: 0 }}
+            />
+          </React.Fragment>
+        ) : (
+          <div className="tutorial-full-overlay" />
+        )}
+
+        {hasMeasuredSpotlight && currentStep.clickThrough && (
           <div
-            className="tutorial-spotlight-hole"
-            style={hasMeasuredSpotlight ? {
+            className="tutorial-click-zone"
+            style={{
               width: spotlight!.w,
               height: spotlight!.h,
-              transform: `translate3d(${spotlight!.cx - spotlight!.w / 2}px, ${spotlight!.cy - spotlight!.h / 2}px, 0)`,
-            } : { opacity: 0 }}
+              transform: `translate3d(${spotlight!.cx}px, ${spotlight!.cy}px, 0) translate3d(-50%, -50%, 0)`,
+              pointerEvents: 'auto',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const el = document.querySelector(currentStep.targetSelector!.split(',')[0].trim());
+              if (currentStep.advanceOnClick) onAdvanceOnly();
+              if (el instanceof HTMLElement) el.click();
+            }}
           />
-          <div
-            className="tutorial-spotlight-ring"
-            style={hasMeasuredSpotlight ? {
-              position: 'fixed',
-              top: 0, left: 0,
-              width: spotlight!.w, height: spotlight!.h,
-              transform: `translate3d(${spotlight!.cx - spotlight!.w / 2}px, ${spotlight!.cy - spotlight!.h / 2}px, 0)`,
-            } : { opacity: 0 }}
-          />
-        </React.Fragment>
-      ) : (
-        <div className="tutorial-full-overlay" />
-      )}
+        )}
 
-      {hasMeasuredSpotlight && currentStep.clickThrough && (
-        <div
-          className="tutorial-click-zone"
-          style={{
-            width: spotlight!.w,
-            height: spotlight!.h,
-            transform: `translate3d(${spotlight!.cx - spotlight!.w / 2}px, ${spotlight!.cy - spotlight!.h / 2}px, 0)`,
-            pointerEvents: 'auto',
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            const el = document.querySelector(currentStep.targetSelector!.split(',')[0].trim());
-            if (currentStep.advanceOnClick) onAdvanceOnly();
-            if (el instanceof HTMLElement) el.click();
-          }}
-        />
-      )}
+      </div>
 
       <div
         ref={cardRef}
@@ -279,6 +291,7 @@ const Tutorial: React.FC<TutorialProps> = ({ step, onNext, onAdvanceOnly, onBack
           width: CARD_W,
           transform: `translate3d(${cardTranslate.x}px, ${cardTranslate.y}px, 0)`,
           pointerEvents: 'auto',
+          opacity: isInitialMount ? 0 : (cardVisible ? 1 : 0),
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -316,7 +329,7 @@ const Tutorial: React.FC<TutorialProps> = ({ step, onNext, onAdvanceOnly, onBack
           </button>
         </div>
       </div>
-    </div>
+    </React.Fragment>
   );
 };
 

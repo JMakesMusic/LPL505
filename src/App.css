@@ -41,6 +41,16 @@
   --sidebar-width: 320px;
 }
 
+@keyframes noteFadeOut {
+  0% { transform: scale(1); opacity: 1; filter: brightness(1.5); }
+  100% { transform: scale(0.6); opacity: 0; filter: brightness(2); }
+}
+
+.note-exit {
+  animation: noteFadeOut 0.2s forwards cubic-bezier(0.4, 0, 1, 1);
+  pointer-events: none !important;
+}
+
 [data-shape='square'] {
   --radius-sm: 2px;
   --radius-md: 4px;
@@ -552,8 +562,15 @@ h1, h2, h3 {
   border-radius: 2px;
   touch-action: none;
 }
+
+[data-shape='circular'] .resize-handle {
+  right: 14px;
+  bottom: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
 .resize-handle:hover {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.25) !important;
 }
 
 /* Disabled buttons */
@@ -600,6 +617,11 @@ h1, h2, h3 {
   100% { opacity: 0.6; transform: scale(1); }
 }
 
+@keyframes pulse-pending {
+  0% { opacity: 0.3; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1.2); }
+}
+
 .glow-flow {
   animation: slowPulse 8s ease-in-out infinite;
 }
@@ -632,10 +654,10 @@ h1, h2, h3 {
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75);
   z-index: 998;
   pointer-events: none;
-  will-change: transform;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, width, height;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Full dark overlay when no spotlight target */
@@ -647,6 +669,9 @@ h1, h2, h3 {
 }
 
 .tutorial-spotlight-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
   border-radius: 8px;
   box-shadow:
     0 0 0 2px var(--accent-base),
@@ -654,10 +679,10 @@ h1, h2, h3 {
     0 0 24px rgba(var(--accent-rgb), 0.12);
   z-index: 999;
   pointer-events: none;
-  will-change: transform;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, width, height;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   animation: tutorialPulseRing 2.5s ease-in-out infinite;
 }
 
@@ -668,10 +693,10 @@ h1, h2, h3 {
   left: 0;
   z-index: 999;
   cursor: pointer;
-  will-change: transform;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, width, height;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes tutorialPulseRing {
@@ -680,17 +705,27 @@ h1, h2, h3 {
 }
 
 .tutorial-card {
-  z-index: 10001; /* Above modals (1000) so tutorial text is always readable */
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
+  z-index: 20002; /* Top-most layer */
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
-  padding: 24px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 40px rgba(var(--accent-rgb), 0.08), inset 0 0 0 1px rgba(255,255,255,0.03);
+  padding: 28px;
+  box-shadow: 
+    0 24px 64px rgba(0,0,0,0.6), 
+    0 0 40px rgba(var(--accent-rgb), 0.08), 
+    inset 0 0 0 1px rgba(255,255,255,0.05);
   max-width: 400px;
   opacity: 0;
   will-change: transform, opacity;
-  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='light'] .tutorial-card {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.05);
 }
 
 .tutorial-card.visible {

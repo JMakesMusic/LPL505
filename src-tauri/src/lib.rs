@@ -277,6 +277,30 @@ fn send_midi_pc(state: State<MidiState>, channel: u8, program: u8) -> Result<(),
 }
 
 #[tauri::command]
+fn send_midi_note_on(state: State<MidiState>, channel: u8, note: u8, velocity: u8) -> Result<(), String> {
+    let mut lock = state.output_conn.lock().map_err(|e| e.to_string())?;
+    if let Some(conn) = lock.as_mut() {
+        let status = 0x90 + (channel.min(15));
+        conn.send(&[status, note.min(127), velocity.min(127)]).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("No MIDI output connected".to_string())
+    }
+}
+
+#[tauri::command]
+fn send_midi_note_off(state: State<MidiState>, channel: u8, note: u8) -> Result<(), String> {
+    let mut lock = state.output_conn.lock().map_err(|e| e.to_string())?;
+    if let Some(conn) = lock.as_mut() {
+        let status = 0x80 + (channel.min(15));
+        conn.send(&[status, note.min(127), 0]).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("No MIDI output connected".to_string())
+    }
+}
+
+#[tauri::command]
 fn save_template(path: String, data: String) -> Result<(), String> {
     std::fs::write(&path, &data).map_err(|e| e.to_string())
 }
@@ -332,6 +356,8 @@ pub fn run() {
             disconnect_midi_output,
             send_midi_cc,
             send_midi_pc,
+            send_midi_note_on,
+            send_midi_note_off,
             save_template,
             load_template,
             read_file_base64,

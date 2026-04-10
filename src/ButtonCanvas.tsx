@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
-import { CanvasElement, FaderElement } from './types';
+import { CanvasElement, FaderElement, MidiLoopElement, QUANTIZE_LENGTHS } from './types';
 import { useMidi } from './MidiContext';
 import { getContrastColor } from './lib/colorUtils';
 
@@ -20,6 +20,7 @@ interface ButtonCanvasProps {
   gridOpacity: number;
   showGrid?: boolean;
   colorMode: 'dark' | 'light';
+  onOpenPianoRoll?: (elementId: string) => void;
 }
 
 const MIN_WIDTH = 60;
@@ -28,10 +29,10 @@ const REF_W = 1000;
 const REF_H = 700;
 
 const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
-  mode, macros, setMacrosLive, commitSnapshot, selectedMacroId, onSelectMacro, theme, accentColor, glowAmount, snapToGrid, gridSize, gridOpacity, showGrid, colorMode
+  mode, macros, setMacrosLive, commitSnapshot, selectedMacroId, onSelectMacro, theme, accentColor, glowAmount, snapToGrid, gridSize, gridOpacity, showGrid, colorMode, onOpenPianoRoll
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { triggerElement, triggerFaderGlide, sendCC } = useMidi();
+  const { triggerElement, triggerFaderGlide, sendCC, sendNoteOn, sendNoteOff, totalTicksRef, isPlayingRef, timeSignatureRef, timeDenominatorRef } = useMidi();
   const [heldIds, setHeldIds] = useState<Set<string>>(new Set());
   const isDragging = useRef(false);
   const isFaderDragging = useRef(false);
@@ -258,13 +259,253 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
     if (el.type === 'fx_button') return el.messages.some(m => m.fxType >= 0);
     if (el.type === 'free_button') return el.freeMessages.length > 0;
     if (el.type === 'memory_button') return true;
+    if (el.type === 'midi_loop') return el.notes.length > 0;
     return false;
   };
+
+  // ─── MIDI Loop playback engine ─────────────────────────────────────────
+  const [activeLoops, setActiveLoops] = useState<Set<string>>(new Set());
+  const [pendingLoops, setPendingLoops] = useState<Set<string>>(new Set());
+  const loopSoundingNotes = useRef<Map<string, Set<number>>>(new Map()); // pitch tracking for note-offs
+  const [loopActiveNoteIds, setLoopActiveNoteIds] = useState<Map<string, Set<string>>>(new Map()); // noteId tracking for glow
+  const [loopPlayheadPositions, setLoopPlayheadPositions] = useState<Map<string, number>>(new Map());
+  const loopStartTicks = useRef<Map<string, number>>(new Map());
+  // Store quantize config per pending loop so processLoops can check boundaries
+  const pendingLoopConfigs = useRef<Map<string, { mode: string; tickTarget: number }>>(new Map());
+  const delayTimers = useRef<Map<string, number>>(new Map());
+
+  const startLoopNow = useCallback((elId: string) => {
+    setActiveLoops(prev => { const next = new Set(prev); next.add(elId); return next; });
+    loopStartTicks.current.set(elId, totalTicksRef.current);
+    if (!loopSoundingNotes.current.has(elId)) {
+      loopSoundingNotes.current.set(elId, new Set());
+    }
+  }, [totalTicksRef]);
+
+  const stopLoop = useCallback((el: MidiLoopElement) => {
+    const sounding = loopSoundingNotes.current.get(el.id);
+    if (sounding) {
+      sounding.forEach(pitch => sendNoteOff(pitch));
+      sounding.clear();
+    }
+    setActiveLoops(prev => { const next = new Set(prev); next.delete(el.id); return next; });
+    setLoopActiveNoteIds(prev => { const next = new Map(prev); next.delete(el.id); return next; });
+    loopStartTicks.current.delete(el.id);
+  }, [sendNoteOff]);
+
+  const toggleMidiLoop = useCallback((el: MidiLoopElement) => {
+    // If active — stop immediately
+    if (activeLoops.has(el.id)) {
+      stopLoop(el);
+      return;
+    }
+    // If pending — cancel
+    if (pendingLoops.has(el.id)) {
+      setPendingLoops(prev => { const next = new Set(prev); next.delete(el.id); return next; });
+      pendingLoopConfigs.current.delete(el.id);
+      // Cancel any delay timer
+      const timer = delayTimers.current.get(el.id);
+      if (timer) { clearTimeout(timer); delayTimers.current.delete(el.id); }
+      return;
+    }
+
+    const q = el.quantize;
+    const qMode = q?.mode || 'immediate';
+
+    if (qMode === 'immediate' || !isPlayingRef.current) {
+      startLoopNow(el.id);
+    } else if (qMode === 'delay') {
+      // Delay mode: wait a fixed duration then start (NOT synced to clock)
+      const qLen = QUANTIZE_LENGTHS[q?.valueIndex ?? 4]; // default 1 bar
+      const ticksPerBeat = timeDenominatorRef.current === 8 ? 12 : 24;
+      const delayTicks = 'bars' in qLen
+        ? (qLen.bars as number) * timeSignatureRef.current * ticksPerBeat
+        : (qLen.ticks as number);
+      // Estimate ms from current tempo — rough but fine for delay mode
+      const msPerTick = 60000 / (120 * ticksPerBeat); // fallback 120 BPM
+      const delayMs = delayTicks * msPerTick;
+
+      setPendingLoops(prev => { const next = new Set(prev); next.add(el.id); return next; });
+      const timer = window.setTimeout(() => {
+        startLoopNow(el.id);
+        setPendingLoops(prev => { const next = new Set(prev); next.delete(el.id); return next; });
+        pendingLoopConfigs.current.delete(el.id);
+        delayTimers.current.delete(el.id);
+      }, delayMs);
+      delayTimers.current.set(el.id, timer);
+    } else {
+      // Quantized mode: wait for next boundary
+      const qLen = QUANTIZE_LENGTHS[q?.valueIndex ?? 4];
+      const ticksPerBeat = timeDenominatorRef.current === 8 ? 12 : 24;
+      const ticksPerBar = timeSignatureRef.current * ticksPerBeat;
+      const currentTick = totalTicksRef.current;
+
+      let targetTick: number;
+      if ('bars' in qLen) {
+        // Bar-level quantization: wait for next N-bar boundary
+        const barTicks = (qLen.bars as number) * ticksPerBar;
+        targetTick = Math.ceil((currentTick + 1) / barTicks) * barTicks;
+      } else {
+        // Sub-bar quantization: wait for next tick boundary
+        const snapTicks = qLen.ticks as number;
+        targetTick = Math.ceil((currentTick + 1) / snapTicks) * snapTicks;
+      }
+
+      setPendingLoops(prev => { const next = new Set(prev); next.add(el.id); return next; });
+      pendingLoopConfigs.current.set(el.id, { mode: 'quantized', tickTarget: targetTick });
+    }
+  }, [activeLoops, pendingLoops, stopLoop, startLoopNow, isPlayingRef, totalTicksRef, timeSignatureRef, timeDenominatorRef]);
+
+  // Listen for clock ticks to drive loop playback
+  useEffect(() => {
+    let animFrame: number;
+    let lastProcessedTick = -1;
+    let wasPlayingCache = false;
+
+    const processLoops = () => {
+      animFrame = requestAnimationFrame(processLoops);
+      const currentGlobalTick = totalTicksRef.current;
+      if (currentGlobalTick === lastProcessedTick) return;
+
+      if (!isPlayingRef.current) {
+        lastProcessedTick = currentGlobalTick;
+        wasPlayingCache = false;
+        return;
+      }
+
+      // Reset start positions if playing just started or if clock reset backwards
+      if (!wasPlayingCache || currentGlobalTick < lastProcessedTick) {
+        activeLoops.forEach(loopId => {
+          loopStartTicks.current.set(loopId, currentGlobalTick);
+          const sounding = loopSoundingNotes.current.get(loopId);
+          const el = macros.find(m => m.id === loopId) as MidiLoopElement | undefined;
+          if (sounding && el) {
+            sounding.forEach(pitch => sendNoteOff(pitch));
+            sounding.clear();
+          }
+        });
+        wasPlayingCache = true;
+      }
+
+      lastProcessedTick = currentGlobalTick;
+
+      const ticksPerBeat = timeDenominatorRef.current === 8 ? 12 : 24;
+
+      // Check pending loops against their target tick
+      if (pendingLoops.size > 0) {
+        const toActivate: string[] = [];
+        pendingLoops.forEach(loopId => {
+          const config = pendingLoopConfigs.current.get(loopId);
+          if (!config) return; // delay mode — handled by setTimeout
+          if (currentGlobalTick >= config.tickTarget) {
+            toActivate.push(loopId);
+          }
+        });
+        if (toActivate.length > 0) {
+          toActivate.forEach(loopId => {
+            loopStartTicks.current.set(loopId, currentGlobalTick);
+            if (!loopSoundingNotes.current.has(loopId)) {
+              loopSoundingNotes.current.set(loopId, new Set());
+            }
+            pendingLoopConfigs.current.delete(loopId);
+          });
+          setActiveLoops(prev => {
+            const next = new Set(prev);
+            toActivate.forEach(id => next.add(id));
+            return next;
+          });
+          setPendingLoops(prev => {
+            const next = new Set(prev);
+            toActivate.forEach(id => next.delete(id));
+            return next;
+          });
+        }
+      }
+
+      if (activeLoops.size === 0) return;
+
+      const newPositions = new Map<string, number>();
+      const newActiveNoteIds = new Map<string, Set<string>>();
+
+      activeLoops.forEach(loopId => {
+        const el = macros.find(m => m.id === loopId && m.type === 'midi_loop') as MidiLoopElement | undefined;
+        if (!el) return;
+
+        const startTick = loopStartTicks.current.get(loopId) ?? currentGlobalTick;
+        const totalLoopTicks = el.loopLengthBars * timeSignatureRef.current * ticksPerBeat;
+        if (totalLoopTicks <= 0) return;
+
+        const elapsed = currentGlobalTick - startTick;
+        const positionInLoop = ((elapsed % totalLoopTicks) + totalLoopTicks) % totalLoopTicks;
+        newPositions.set(loopId, positionInLoop);
+
+        const sounding = loopSoundingNotes.current.get(loopId) || new Set<number>();
+        const activeIds = new Set<string>();
+
+        el.notes.forEach(note => {
+          const noteEnd = note.startTick + note.duration;
+          const isNoteActive = positionInLoop >= note.startTick && positionInLoop < noteEnd;
+
+          if (isNoteActive) activeIds.add(note.id);
+
+          if (isNoteActive && !sounding.has(note.pitch)) {
+            sendNoteOn(note.pitch, note.velocity);
+            sounding.add(note.pitch);
+          } else if (!isNoteActive && sounding.has(note.pitch)) {
+            const otherActive = el.notes.some(n =>
+              n.id !== note.id &&
+              n.pitch === note.pitch &&
+              positionInLoop >= n.startTick &&
+              positionInLoop < n.startTick + n.duration
+            );
+            if (!otherActive) {
+              sendNoteOff(note.pitch);
+              sounding.delete(note.pitch);
+            }
+          }
+        });
+
+        loopSoundingNotes.current.set(loopId, sounding);
+        newActiveNoteIds.set(loopId, activeIds);
+      });
+
+      setLoopPlayheadPositions(newPositions);
+      setLoopActiveNoteIds(newActiveNoteIds);
+    };
+
+    animFrame = requestAnimationFrame(processLoops);
+    return () => cancelAnimationFrame(animFrame);
+  }, [activeLoops, pendingLoops, macros, sendNoteOn, sendNoteOff, totalTicksRef, isPlayingRef, timeSignatureRef, timeDenominatorRef]);
+
+  // Stop all loops when switching modes
+  useEffect(() => {
+    if (activeLoops.size > 0 || pendingLoops.size > 0) {
+      activeLoops.forEach(loopId => {
+        const sounding = loopSoundingNotes.current.get(loopId);
+        const el = macros.find(m => m.id === loopId) as MidiLoopElement | undefined;
+        if (sounding && el) {
+          sounding.forEach(pitch => sendNoteOff(pitch));
+          sounding.clear();
+        }
+      });
+      setActiveLoops(new Set());
+      setPendingLoops(new Set());
+      setLoopActiveNoteIds(new Map());
+      loopStartTicks.current.clear();
+      pendingLoopConfigs.current.clear();
+      delayTimers.current.forEach(t => clearTimeout(t));
+      delayTimers.current.clear();
+    }
+  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePerformPointerDown = (e: React.PointerEvent, el: CanvasElement) => {
     e.preventDefault();
     if (el.type === 'fader') {
       startFaderDrag(e, el);
+      return;
+    }
+    if (el.type === 'midi_loop') {
+      toggleMidiLoop(el);
       return;
     }
     setHeldIds(prev => new Set(prev).add(el.id));
@@ -287,6 +528,42 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
 
   const handleElementPointerDown = (e: React.PointerEvent, el: CanvasElement) => {
     if (mode === 'perform') handlePerformPointerDown(e, el);
+    else if (el.type === 'midi_loop') {
+      // In edit mode: drag to move, click (no drag) to open piano roll
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const origX = el.x;
+      const origY = el.y;
+      isDragging.current = false;
+      setIsCanvasDragging(true);
+      const beforeSnapshot = JSON.parse(JSON.stringify(macros));
+
+      const onMove = (moveEvt: PointerEvent) => {
+        isDragging.current = true;
+        const dx = (moveEvt.clientX - startX) / sx;
+        const dy = (moveEvt.clientY - startY) / sy;
+        setMacrosLive(prev => prev.map(m =>
+          m.id === el.id ? { ...m, x: snap(origX + dx), y: snap(origY + dy) } : m
+        ));
+      };
+
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        setIsCanvasDragging(false);
+        if (isDragging.current) {
+          commitSnapshot(beforeSnapshot);
+        } else {
+          // Click without drag: select
+          onSelectMacro(el.id);
+          setMultiSelected(new Set());
+        }
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    }
     else startDrag(e, el.id);
   };
 
@@ -323,12 +600,20 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
     };
     window.addEventListener('fader-keybind-trigger', handleFaderKeybind as EventListener);
 
+    // MIDI loop toggle via keybind
+    const handleLoopToggle = (e: CustomEvent) => {
+      const el = macros.find(m => m.id === e.detail && m.type === 'midi_loop') as MidiLoopElement | undefined;
+      if (el) toggleMidiLoop(el);
+    };
+    window.addEventListener('midi-loop-toggle', handleLoopToggle as EventListener);
+
     return () => {
       window.removeEventListener('macro-trigger-down', handleTriggerDown as EventListener);
       window.removeEventListener('macro-trigger-up', handleTriggerUp as EventListener);
       window.removeEventListener('fader-keybind-trigger', handleFaderKeybind as EventListener);
+      window.removeEventListener('midi-loop-toggle', handleLoopToggle as EventListener);
     };
-  }, [macros, executeElement, triggerFaderGlide, setMacrosLive]);
+  }, [macros, executeElement, triggerFaderGlide, setMacrosLive, toggleMidiLoop]);
 
   // ─── Render ────────────────────────────────────────────────────────────
   return (
@@ -374,8 +659,8 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
           top: selectionRect.y,
           width: selectionRect.w,
           height: selectionRect.h,
-          border: '1px solid var(--accent-base)',
-          backgroundColor: 'rgba(var(--accent-rgb), 0.08)',
+          border: `1px solid ${colorMode === 'dark' ? '#ffffff' : '#000000'}`,
+          backgroundColor: `rgba(${colorMode === 'dark' ? '255,255,255' : '0,0,0'}, 0.08)`,
           pointerEvents: 'none',
           zIndex: 999,
           borderRadius: 2,
@@ -406,12 +691,11 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
           ? 'box-shadow 0.08s ease-out, transform 0.08s ease-out, border 0.1s'
           : 'left 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), border 0.1s';
 
-        // Multi-select highlight
-        const borderStyle = isMultiSelected
-          ? '2px solid var(--accent-base)'
-          : isSingleSelected
-            ? '2px solid #fff'
-            : `2px solid ${theme === 'filled' ? 'rgba(255,255,255,0.15)' : color}`;
+        // Selection highlight (single or multi-select via rubber band)
+        const selectionBorderColor = colorMode === 'dark' ? '#ffffff' : '#000000';
+        const borderStyle = (isMultiSelected || isSingleSelected)
+          ? `2px solid ${selectionBorderColor}`
+          : `2px solid ${theme === 'filled' ? 'rgba(255,255,255,0.15)' : color}`;
 
         const faderBg = theme === 'filled' ? 'var(--bg-panel)' : isFrost ? 'rgba(128,128,128,0.15)' : isTintedFrost ? `${color}33` : isTinted ? `${color}1A` : 'transparent';
         const btnBg = theme === 'filled' ? color : isFrost ? 'rgba(128,128,128,0.15)' : isTintedFrost ? `${color}33` : isTinted ? `${color}1A` : 'transparent';
@@ -454,33 +738,35 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
                 transition: transitionStr,
                 transform: transformValue,
                 zIndex: isSelected || isHovered ? 10 : 1,
-                overflow: 'hidden',
                 WebkitFontSmoothing: 'antialiased',
                 transformStyle: 'preserve-3d'
               }}
             >
-              {/* Main Fader Base Layer */}
-              <div style={{
-                position: 'absolute', inset: 0,
-                backgroundColor: faderBg,
-                backdropFilter,
-                WebkitBackdropFilter: backdropFilter,
-                borderRadius: 'inherit',
-                zIndex: 0,
-                pointerEvents: 'none',
-                transform: 'translateZ(-1px)'
-              }} />
-              {/* Fader Fill Layer */}
-              <div style={{
-                position: 'absolute',
-                left: -2, right: -2, bottom: -2,
-                top: ratio >= 0.99 ? -2 : 'auto',
-                height: ratio >= 0.99 ? 'auto' : `${ratio * 100}%`,
-                background: theme === 'wireframe' ? `${color}30` : color,
-                zIndex: 0,
-                pointerEvents: 'none',
-                transition: 'none' // Removed ease-out transition to allow zero-lag requestAnimationFrame updates
-              }} />
+              {/* Clipping container for fader fill and background */}
+              <div style={{ position: 'absolute', inset: -2, borderRadius: 'inherit', overflow: 'hidden', pointerEvents: 'none' }}>
+                {/* Main Fader Base Layer */}
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backgroundColor: faderBg,
+                  backdropFilter,
+                  WebkitBackdropFilter: backdropFilter,
+                  borderRadius: 'inherit',
+                  zIndex: 0,
+                  pointerEvents: 'none',
+                  transform: 'translateZ(-1px)'
+                }} />
+                {/* Fader Fill Layer */}
+                <div style={{
+                  position: 'absolute',
+                  left: 0, right: 0, bottom: 0,
+                  top: ratio >= 0.99 ? 0 : 'auto',
+                  height: ratio >= 0.99 ? 'auto' : `${ratio * 100}%`,
+                  background: theme === 'wireframe' ? `${color}30` : color,
+                  zIndex: 0,
+                  pointerEvents: 'none',
+                  transition: 'none'
+                }} />
+              </div>
 
               <div style={{ position: 'relative', zIndex: 1, fontSize: '0.65rem', opacity: 0.6, pointerEvents: 'none', transform: 'translateZ(0)' }}>
                 {el.maxValue}
@@ -496,10 +782,176 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
               </div>
 
               {mode === 'edit' && isSingleSelected && (
-                <div className="resize-handle" onPointerDown={(e) => startResize(e, el.id)}>
+                <div className="resize-handle" onPointerDown={(e) => startResize(e, el.id)} style={{ zIndex: 20, transform: 'translateZ(10px)' }}>
                   <svg width="10" height="10" viewBox="0 0 10 10">
-                    <line x1="9" y1="1" x2="1" y2="9" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-                    <line x1="9" y1="5" x2="5" y2="9" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+                    <line x1="9" y1="1" x2="1" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
+                    <line x1="9" y1="5" x2="5" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // MIDI Loop rendering
+        if (el.type === 'midi_loop') {
+          const isLoopActive = activeLoops.has(el.id);
+          const isLoopPending = pendingLoops.has(el.id);
+          const loopPosition = loopPlayheadPositions.get(el.id) || 0;
+          const ticksPerBeatLocal = 24;
+          const totalLoopTicks = el.loopLengthBars * 4 * ticksPerBeatLocal;
+          const playheadRatio = totalLoopTicks > 0 ? loopPosition / totalLoopTicks : 0;
+
+          // Calculate note bounds for mini preview
+          const minPitch = el.notes.length > 0 ? Math.min(...el.notes.map(n => n.pitch)) : 60;
+          const maxPitch = el.notes.length > 0 ? Math.max(...el.notes.map(n => n.pitch)) : 72;
+          const pitchRange = Math.max(12, maxPitch - minPitch + 2);
+
+          return (
+            <div
+              key={el.id}
+              id={`macro-btn-${el.id}`}
+              onPointerDown={(e) => handleElementPointerDown(e, el)}
+              onDoubleClick={() => { if (mode === 'edit' && onOpenPianoRoll) onOpenPianoRoll(el.id); }}
+              onPointerEnter={() => setHoveredId(el.id)}
+              onPointerLeave={() => setHoveredId(prev => prev === el.id ? null : prev)}
+              style={{
+                position: 'absolute', left: screenX, top: screenY, width: screenW, height: screenH,
+                border: isSelected ? borderStyle : (isLoopActive ? `2px solid ${color}` : borderStyle),
+                color: actualTextColor,
+                borderRadius: 'var(--radius-md)',
+                display: 'flex', flexDirection: 'column',
+                cursor: mode === 'edit' ? 'pointer' : 'pointer',
+                boxShadow: isLoopActive
+                  ? `0 0 ${Math.round(24 * glowAmount)}px ${Math.round(8 * glowAmount)}px ${color}, 0 0 ${Math.round(48 * glowAmount)}px ${Math.round(16 * glowAmount)}px ${color}80`
+                  : shadowStyle,
+                userSelect: 'none', touchAction: 'none', pointerEvents: 'auto',
+                transition: transitionStr,
+                transform: isLoopActive ? 'scale(0.98)' : transformValue,
+                zIndex: isSelected || isHovered ? 10 : 1,
+                WebkitFontSmoothing: 'antialiased',
+                transformStyle: 'preserve-3d'
+              }}
+            >
+              {/* Clipping container for background and preview */}
+              <div style={{ position: 'absolute', inset: 0, borderRadius: 'inherit', overflow: 'hidden', pointerEvents: 'none' }}>
+                {/* Base Background Layer */}
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  backgroundColor: btnBg,
+                  backdropFilter,
+                  WebkitBackdropFilter: backdropFilter,
+                  borderRadius: 'inherit',
+                  zIndex: 0,
+                  pointerEvents: 'none',
+                  transform: 'translateZ(-1px)'
+                }} />
+
+                {/* Mini piano roll preview */}
+                {(() => {
+                  // In filled theme, notes are same color as bg — use contrast color
+                  const isFilled = theme === 'filled';
+                  const baseNoteColor = isFilled
+                    ? (colorMode === 'light' ? '#ffffff' : '#000000')
+                    : color;
+                  const activeNoteIdsForLoop = loopActiveNoteIds.get(el.id);
+                  return (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      zIndex: 1, pointerEvents: 'none',
+                      padding: '4px',
+                    }}>
+                      {el.notes.map(note => {
+                        const noteLeft = totalLoopTicks > 0 ? (note.startTick / totalLoopTicks) * 100 : 0;
+                        const noteWidth = totalLoopTicks > 0 ? (note.duration / totalLoopTicks) * 100 : 0;
+                        const noteTop = ((maxPitch + 1 - note.pitch) / pitchRange) * 100;
+                        const noteHeightPct = (1 / pitchRange) * 100;
+                        const velocityAlpha = 0.3 + (note.velocity / 127) * 0.7;
+                        const isNoteCurrentlyPlaying = isLoopActive && activeNoteIdsForLoop?.has(note.id);
+                        return (
+                          <div
+                            key={note.id}
+                            style={{
+                              position: 'absolute',
+                              left: `${noteLeft}%`,
+                              top: `${noteTop}%`,
+                              width: `${Math.max(0.5, noteWidth)}%`,
+                              height: `${noteHeightPct}%`,
+                              minHeight: 2,
+                              minWidth: 2,
+                              background: isNoteCurrentlyPlaying ? '#ffffff' : baseNoteColor,
+                              opacity: isNoteCurrentlyPlaying ? 1 : velocityAlpha,
+                              borderRadius: 1,
+                              boxShadow: isNoteCurrentlyPlaying ? `0 0 6px ${color}, 0 0 12px ${color}80` : 'none',
+                              transition: 'background 0.05s, opacity 0.05s, box-shadow 0.05s',
+                            }}
+                          />
+                        );
+                      })}
+
+                      {/* Playhead line */}
+                      {isLoopActive && (
+                        <div style={{
+                          position: 'absolute',
+                          left: `${playheadRatio * 100}%`,
+                          top: 0, bottom: 0,
+                          width: 2,
+                          background: '#ffffff',
+                          boxShadow: '0 0 6px rgba(255,255,255,0.6)',
+                          zIndex: 5,
+                        }} />
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Label and keybind */}
+              <div style={{
+                position: 'absolute', bottom: 4, left: 0, right: 0,
+                zIndex: 2, pointerEvents: 'none',
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+              }}>
+                <div style={{
+                  fontSize: el.fontSize ? `${el.fontSize * 0.8}rem` : '0.75rem',
+                  fontWeight: 800,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                  transform: 'translateZ(0)',
+                }}>
+                  {el.label}
+                </div>
+                <div style={{ fontSize: '0.6rem', opacity: 0.7, transform: 'translateZ(0)' }}>
+                  {el.keybind ? `[${el.keybind.toUpperCase()}]` : ''}
+                </div>
+              </div>
+
+              {/* Active indicator */}
+              {isLoopActive && (
+                <div style={{
+                  position: 'absolute', top: 4, right: 4,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#00ff00',
+                  boxShadow: '0 0 6px #00ff00',
+                  zIndex: 3,
+                }} />
+              )}
+              {/* Pending indicator — pulsing orange dot */}
+              {isLoopPending && (
+                <div style={{
+                  position: 'absolute', top: 4, right: 4,
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#ff8800',
+                  boxShadow: '0 0 6px #ff8800',
+                  zIndex: 3,
+                  animation: 'pulse-pending 0.6s ease-in-out infinite alternate',
+                }} />
+              )}
+
+              {mode === 'edit' && isSingleSelected && (
+                <div className="resize-handle" onPointerDown={(e) => startResize(e, el.id)} style={{ zIndex: 20, transform: 'translateZ(10px)' }}>
+                  <svg width="10" height="10" viewBox="0 0 10 10">
+                    <line x1="9" y1="1" x2="1" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
+                    <line x1="9" y1="5" x2="5" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
                   </svg>
                 </div>
               )}
@@ -562,10 +1014,10 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
             </div>
 
             {mode === 'edit' && isSingleSelected && (
-              <div className="resize-handle" onPointerDown={(e) => startResize(e, el.id)}>
+              <div className="resize-handle" onPointerDown={(e) => startResize(e, el.id)} style={{ zIndex: 20, transform: 'translateZ(10px)' }}>
                 <svg width="10" height="10" viewBox="0 0 10 10">
-                  <line x1="9" y1="1" x2="1" y2="9" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-                  <line x1="9" y1="5" x2="5" y2="9" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+                  <line x1="9" y1="1" x2="1" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
+                  <line x1="9" y1="5" x2="5" y2="9" stroke={actualTextColor} strokeWidth="1.5" strokeOpacity="0.85" />
                 </svg>
               </div>
             )}

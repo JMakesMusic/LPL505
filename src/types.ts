@@ -85,7 +85,24 @@ export type MemoryButtonElement = BaseElement & {
   memoryNumber: number; // 1-99
 };
 
-export type CanvasElement = FxButtonElement | FreeButtonElement | MemoryButtonElement | FaderElement;
+// ─── MIDI Loop Types ─────────────────────────────────────────────────────────
+
+export type MidiNote = {
+  id: string;
+  pitch: number;      // 0-127 MIDI note number
+  startTick: number;  // Position in ticks from loop start (24 PPQN)
+  duration: number;   // Length in ticks
+  velocity: number;   // 0-127
+};
+
+export type MidiLoopElement = BaseElement & {
+  type: 'midi_loop';
+  notes: MidiNote[];
+  loopLengthBars: number;   // 1, 2, 4, 8 etc.
+  midiChannel: number;      // 0-15 (0 = MIDI channel 1)
+};
+
+export type CanvasElement = FxButtonElement | FreeButtonElement | MemoryButtonElement | FaderElement | MidiLoopElement;
 
 // ─── Legacy alias (for templates saved with old format) ──────────────────────
 export type MacroButtonConfig = CanvasElement;

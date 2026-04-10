@@ -12,6 +12,7 @@ interface ConfigPanelProps {
   onMoveLayer: (direction: 'up' | 'down' | 'front' | 'back') => void;
   accentColor: string;
   theme: ThemeStyle;
+  onOpenPianoRoll?: () => void;
 }
 
 // ─── Shared Data ─────────────────────────────────────────────────────────────
@@ -41,23 +42,24 @@ const FX_OPTIONS = [
 
 const TARGET_ORDER: FxTarget[] = ['inputA', 'inputB', 'inputC', 'inputD', 'trackA', 'trackB', 'trackC', 'trackD'];
 
-const TARGETS: { value: FxTarget; label: string }[] = [
-  { value: 'inputA', label: 'Input FX A (CC 1)' },
-  { value: 'inputB', label: 'Input FX B (CC 2)' },
-  { value: 'inputC', label: 'Input FX C (CC 3)' },
-  { value: 'inputD', label: 'Input FX D (CC 4)' },
-  { value: 'trackA', label: 'Track FX A (CC 5)' },
-  { value: 'trackB', label: 'Track FX B (CC 6)' },
-  { value: 'trackC', label: 'Track FX C (CC 7)' },
-  { value: 'trackD', label: 'Track FX D (CC 8)' },
-];
-
-
-
 // ─── Config Panel ────────────────────────────────────────────────────────────
+import { useMidi } from './MidiContext';
 
-const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDelete, onDuplicate, onMoveLayer, accentColor, theme }) => {
+const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDelete, onDuplicate, onMoveLayer, accentColor, theme, onOpenPianoRoll }) => {
   const el = element;
+  const { ccMap } = useMidi();
+
+  const TARGETS: { value: FxTarget; label: string }[] = [
+    { value: 'inputA', label: `Input FX A (CC ${ccMap.inputA})` },
+    { value: 'inputB', label: `Input FX B (CC ${ccMap.inputB})` },
+    { value: 'inputC', label: `Input FX C (CC ${ccMap.inputC})` },
+    { value: 'inputD', label: `Input FX D (CC ${ccMap.inputD})` },
+    { value: 'trackA', label: `Track FX A (CC ${ccMap.trackA})` },
+    { value: 'trackB', label: `Track FX B (CC ${ccMap.trackB})` },
+    { value: 'trackC', label: `Track FX C (CC ${ccMap.trackC})` },
+    { value: 'trackD', label: `Track FX D (CC ${ccMap.trackD})` },
+  ];
+
 
   const bgColor = el.color || accentColor;
   const defaultTextColor = theme === 'filled' ? getContrastColor(bgColor) : bgColor;
@@ -144,7 +146,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
         Timing & Quantization
       </label>
-      
+
       <div style={{ display: 'flex', gap: 4, marginBottom: q.mode === 'immediate' ? 0 : 12 }}>
         {(['immediate', 'quantized', 'delay'] as QuantizeMode[]).map(m => (
           <button
@@ -188,7 +190,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
           FX Payloads ({el.messages.length}/8)
         </label>
         {el.messages.length < 8 && (
-            <button className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => {
+          <button className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => {
             const nextTarget = TARGET_ORDER[el.messages.length] || 'inputA';
             const newMsg: MidiMessageConfig = { id: `msg-${Date.now()}`, target: nextTarget, fxType: -1 };
             set({ messages: [...el.messages, newMsg] });
@@ -204,16 +206,16 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
               <span style={{ fontSize: '0.75rem', fontWeight: 800 }}>Message {i + 1}</span>
               <Trash size={20} weight="bold" color="var(--danger)" style={{ cursor: 'pointer' }} onClick={() => set({ messages: el.messages.filter(m => m.id !== msg.id) })} />
             </div>
-             <select className="select-input" style={{ width: '100%', marginBottom: 6, fontSize: '0.8rem', padding: '6px' }} value={msg.target}
+            <select className="select-input" style={{ width: '100%', marginBottom: 6, fontSize: '0.8rem', padding: '6px' }} value={msg.target}
               onChange={e => {
                 const newTarget = e.target.value as FxTarget;
-                set({ 
+                set({
                   messages: el.messages.map(m => {
                     if (m.id !== msg.id) return m;
                     // If switching AWAY from trackA and the type is > 50, reset it to 50
                     const newFxType = (newTarget !== 'trackA' && m.fxType > 50) ? 50 : m.fxType;
                     return { ...m, target: newTarget, fxType: newFxType };
-                  }) 
+                  })
                 });
               }}>
               {TARGETS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -325,9 +327,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
           <div key={bind.id} style={{ background: 'var(--bg-panel)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-base)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Keybind {i + 1}</span>
-              <button 
-                className="btn" 
-                onClick={() => set({ faderKeybinds: (el.faderKeybinds || []).filter(b => b.id !== bind.id) })} 
+              <button
+                className="btn"
+                onClick={() => set({ faderKeybinds: (el.faderKeybinds || []).filter(b => b.id !== bind.id) })}
                 style={{ color: 'var(--danger)', borderColor: 'var(--danger)', padding: '2px 8px', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: 4, height: 'auto' }}
               >
                 <Trash size={14} weight="bold" /> DELETE
@@ -477,13 +479,42 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       <div className="input-group" style={{ border: '1px solid var(--border-color)', padding: 12, borderRadius: 'var(--radius-sm)', background: 'var(--bg-base)' }}>
         <label style={{ color: 'var(--accent-base)' }}>Target Memory Number (1-99)</label>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: 8, lineHeight: 1.4 }}>
-          Sets the Boss RC-505mk2 to this memory slot. <br/>
+          Sets the Boss RC-505mk2 to this memory slot. <br />
           (Sends MIDI PC {el.memoryNumber - 1})
         </div>
         <input className="text-input" type="number" min={1} max={99} value={el.memoryNumber}
-          onChange={e => set({ memoryNumber: Math.min(99, Math.max(1, parseInt(e.target.value) || 1)) })} 
-          style={{ fontSize: '1.2rem', padding: '8px 12px', width: '100%', display: 'block' }}/>
+          onChange={e => set({ memoryNumber: Math.min(99, Math.max(1, parseInt(e.target.value) || 1)) })}
+          style={{ fontSize: '1.2rem', padding: '8px 12px', width: '100%', display: 'block' }} />
       </div>
+    </div>
+  );
+
+  // ─── MIDI Loop Config ──────────────────────────────────────────────────
+  const midiLoopConfig = el.type === 'midi_loop' && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ padding: 12, background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
+          Loop Info
+        </label>
+        <div style={{ display: 'flex', gap: 12, fontSize: '0.85rem' }}>
+          <div style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'var(--bg-panel)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--accent-base)' }}>{el.notes.length}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>Notes</div>
+          </div>
+          <div style={{ flex: 1, textAlign: 'center', padding: '8px', background: 'var(--bg-panel)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--accent-base)' }}>{el.loopLengthBars}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>{el.loopLengthBars === 1 ? 'Bar' : 'Bars'}</div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        className="btn btn-primary"
+        style={{ width: '100%', padding: '12px 16px', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 800 }}
+        onClick={onOpenPianoRoll}
+      >
+        Open Piano Roll
+      </button>
     </div>
   );
 
@@ -496,6 +527,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       {faderConfig}
       {faderKeybindsConfig}
       {memoryConfig}
+      {midiLoopConfig}
       {quantizationConfig}
 
       <div style={{ padding: 12, background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginTop: 8 }}>

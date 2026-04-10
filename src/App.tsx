@@ -7,11 +7,12 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { useMidi, MidiDevice } from './MidiContext';
-import { CanvasElement } from './types';
+import { CanvasElement, MidiLoopElement } from './types';
 import ButtonCanvas, { ThemeStyle } from './ButtonCanvas';
 import ConfigPanel from './ConfigPanel';
 import { getContrastColor } from './lib/colorUtils';
 import Tutorial, { STEPS } from './Tutorial';
+import PianoRollEditor from './PianoRollEditor';
 
 const loadSavedOption = <T,>(key: string, def: T): T => {
   const saved = localStorage.getItem(`505fx_${key}`);
@@ -30,6 +31,9 @@ function App() {
     tempo, beatFlash, currentBeat, timeSignature, timeDenominator,
     setTimeSignature, setTimeDenominator,
     refreshDevices, isRefreshing,
+    ccMap, setCcMap,
+    controlChannel, setControlChannel, drumkitChannel, setDrumkitChannel, notesChannel, setNotesChannel,
+    resetMidiDefaults,
   } = useMidi();
 
   const [macros, setMacros] = useState<CanvasElement[]>([]);
@@ -94,6 +98,9 @@ function App() {
   const [showGeneralModal, setShowGeneralModal] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [showPianoRoll, setShowPianoRoll] = useState(false);
+  const [pianoRollElementId, setPianoRollElementId] = useState<string | null>(null);
+  const [showAdvancedMidi, setShowAdvancedMidi] = useState(false);
   const [showBootPrompt, setShowBootPrompt] = useState(() => {
     return loadSavedOption<CanvasElement[]>('lastSessionMacros', []).length > 0;
   });
@@ -128,7 +135,7 @@ function App() {
   const [bgOpacity, setBgOpacity] = useState(() => loadSavedOption('bgOpacity', 1.0));
   const [isAdjustingBg, setIsAdjustingBg] = useState(false);
   const [glowAmount, setGlowAmount] = useState(() => loadSavedOption('glowAmount', 1.0));
-  const [snapToGrid, setSnapToGrid] = useState(() => loadSavedOption('snapToGrid', false));
+  const [snapToGrid, setSnapToGrid] = useState(() => loadSavedOption('snapToGrid', true));
   const [gridSize, setGridSize] = useState(() => loadSavedOption('gridSize', 50)); // in reference-space pixels
   const [gridOpacity, setGridOpacity] = useState(() => loadSavedOption('gridOpacity', 0.15));
   const [workspaceFlash, setWorkspaceFlash] = useState(() => loadSavedOption('workspaceFlash', true));
@@ -245,6 +252,18 @@ function App() {
       setUpdateStatus('error');
       setUpdateError(String(e?.message || e));
     }
+  }, []);
+
+  // ─── Global Zoom Prevention ──────────────────────────────────────────
+  useEffect(() => {
+    const handleGlobalWheel = (e: WheelEvent) => {
+      // Prevent browser zoom (Cmd/Ctrl + Scroll)
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('wheel', handleGlobalWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleGlobalWheel);
   }, []);
 
   // Auto-check on startup
@@ -412,6 +431,18 @@ function App() {
     setShowCreateMenu(false);
   };
 
+  const createMidiLoop = () => {
+    const id = `macro-${Date.now()}`;
+    setMacrosWithHistory(prev => [...prev, {
+      type: 'midi_loop' as const,
+      id, x: 80 + Math.random() * 200, y: 80 + Math.random() * 200,
+      width: 200, height: 120, label: 'MIDI Loop', keybind: '',
+      notes: [], loopLengthBars: 2, midiChannel: 0, color: accentColor,
+    }]);
+    setSelectedMacroId(id);
+    setShowCreateMenu(false);
+  };
+
   const deleteButton = useCallback((id: string) => {
     setMacrosWithHistory(prev => prev.filter(m => m.id !== id));
     setSelectedMacroId(null);
@@ -477,7 +508,12 @@ function App() {
         if (matchingMacros.length > 0) {
           e.preventDefault();
           matchingMacros.forEach(macro => {
-            window.dispatchEvent(new CustomEvent('macro-trigger-down', { detail: macro.id }));
+            if (macro.type === 'midi_loop') {
+              // Toggle MIDI loop via custom event
+              window.dispatchEvent(new CustomEvent('midi-loop-toggle', { detail: macro.id }));
+            } else {
+              window.dispatchEvent(new CustomEvent('macro-trigger-down', { detail: macro.id }));
+            }
           });
         } 
         
@@ -597,6 +633,9 @@ function App() {
                     <div className="create-dropdown-item" onClick={() => { createFader(); setShowCreateMenu(false); }}>
                       <SlidersHorizontal size={21} /> Fader
                     </div>
+                    <div className="create-dropdown-item" onClick={() => { createMidiLoop(); setShowCreateMenu(false); }}>
+                      <Music2 size={21} /> MIDI Loop
+                    </div>
                   </div>
                 )}
               </div>
@@ -706,6 +745,10 @@ function App() {
               gridOpacity={gridOpacity}
               colorMode={colorMode}
               showGrid={isAdjustingBg}
+              onOpenPianoRoll={(elementId) => {
+                setPianoRollElementId(elementId);
+                setShowPianoRoll(true);
+              }}
             />
           </div>
 
@@ -729,6 +772,7 @@ function App() {
                       {activeMacro.type === 'free_button' && <><Zap size={14} weight="bold" /> Free Button</>}
                       {activeMacro.type === 'memory_button' && <><Bookmark size={14} weight="bold" /> Memory Button</>}
                       {activeMacro.type === 'fader' && <><SlidersHorizontal size={14} weight="bold" /> Fader</>}
+                      {activeMacro.type === 'midi_loop' && <><Music2 size={14} weight="bold" /> MIDI Loop</>}
                     </div>
                   </div>
                   <X size={20} weight="bold" style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setSelectedMacroId(null)} />
@@ -741,6 +785,10 @@ function App() {
                   onDelete={() => deleteButton(activeMacro.id)}
                   onDuplicate={() => duplicateButton(activeMacro.id)}
                   onMoveLayer={(dir) => moveLayer(activeMacro.id, dir)}
+                  onOpenPianoRoll={activeMacro.type === 'midi_loop' ? () => {
+                    setPianoRollElementId(activeMacro.id);
+                    setShowPianoRoll(true);
+                  } : undefined}
                 />
               </aside>
             );
@@ -808,6 +856,75 @@ function App() {
                   'Refresh Devices'
                 )}
               </button>
+
+              <div className="modal-divider" />
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', padding: '6px 0' }}
+                onClick={() => setShowAdvancedMidi(prev => !prev)}
+              >
+                <div style={{ fontSize: '0.9rem', color: 'var(--accent-base)', fontWeight: 900, letterSpacing: '0.02em' }}>
+                  Advanced MIDI Settings {showAdvancedMidi ? '▾' : '▸'}
+                </div>
+                {showAdvancedMidi && (
+                  <button className="btn" style={{ padding: '2px 8px', fontSize: '0.7rem' }} onClick={(e) => { e.stopPropagation(); resetMidiDefaults(); }} title="Reset all advanced MIDI settings to defaults">
+                    <RefreshCw size={14} /> Reset All Defaults
+                  </button>
+                )}
+              </div>
+
+              {showAdvancedMidi && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+
+                  {/* ── MIDI Channels ─────────────────────────────── */}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>MIDI Channels</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.75rem' }}>Control</label>
+                      <input type="number" min={1} max={16} className="text-input" value={controlChannel + 1}
+                        onChange={e => setControlChannel(Math.min(15, Math.max(0, (parseInt(e.target.value) || 1) - 1)))}
+                        style={{ padding: '6px', fontSize: '0.9rem' }} />
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: 2 }}>FX, Free, Memory, Faders</span>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.75rem' }}>MIDI Notes</label>
+                      <input type="number" min={1} max={16} className="text-input" value={notesChannel + 1}
+                        onChange={e => setNotesChannel(Math.min(15, Math.max(0, (parseInt(e.target.value) || 1) - 1)))}
+                        style={{ padding: '6px', fontSize: '0.9rem' }} />
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: 2 }}>MIDI Loop notes</span>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.75rem' }}>Drumkit</label>
+                      <input type="number" min={1} max={16} className="text-input" value={drumkitChannel + 1}
+                        onChange={e => setDrumkitChannel(Math.min(15, Math.max(0, (parseInt(e.target.value) || 1) - 1)))}
+                        style={{ padding: '6px', fontSize: '0.9rem' }} />
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', marginTop: 2 }}>Future feature</span>
+                    </div>
+                  </div>
+
+                  {/* ── Default CCs ───────────────────────────────── */}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>Default CCs</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {[
+                      { key: 'inputA', label: 'Input FX A' }, { key: 'inputB', label: 'Input FX B' },
+                      { key: 'inputC', label: 'Input FX C' }, { key: 'inputD', label: 'Input FX D' },
+                      { key: 'trackA', label: 'Track FX A' }, { key: 'trackB', label: 'Track FX B' },
+                      { key: 'trackC', label: 'Track FX C' }, { key: 'trackD', label: 'Track FX D' }
+                    ].map((item) => (
+                      <div className="input-group" key={item.key} style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: '0.75rem' }}>{item.label}</label>
+                        <input
+                          type="number" min={0} max={127}
+                          className="text-input"
+                          value={ccMap[item.key as keyof typeof ccMap]}
+                          onChange={e => setCcMap(prev => ({ ...prev, [item.key]: Math.min(127, Math.max(0, parseInt(e.target.value) || 0)) }))}
+                          style={{ padding: '6px', fontSize: '0.9rem' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -838,11 +955,11 @@ function App() {
               <div className="input-group">
                 <label>Grid Mode</label>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <button className={`btn ${snapToGrid ? 'btn-primary' : ''}`} style={{ flex: 1 }} onClick={() => setSnapToGrid(true)}>
+                    <Grid size={18} color={snapToGrid ? (colorMode === 'dark' ? '#000000' : '#ffffff') : accentColor} weight="bold" /> Grid
+                  </button>
                   <button className={`btn ${!snapToGrid ? 'btn-primary' : ''}`} style={{ flex: 1 }} onClick={() => setSnapToGrid(false)}>
                     Free
-                  </button>
-                  <button className={`btn ${snapToGrid ? 'btn-primary' : ''}`} style={{ flex: 1 }} onClick={() => setSnapToGrid(true)}>
-                    <Grid size={18} /> Grid
                   </button>
                 </div>
               </div>
@@ -1105,6 +1222,17 @@ function App() {
                   <RefreshCw size={18} /> Restart Tutorial
                 </button>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    id="disable-tutorial-checkbox"
+                    checked={tutorialCompleted}
+                    onChange={(e) => setTutorialCompleted(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-base)', cursor: 'pointer', marginBottom: 0 }}
+                  />
+                  <label htmlFor="disable-tutorial-checkbox" style={{ cursor: 'pointer', margin: 0 }}>Disable tutorial on startup</label>
+                </div>
+
                 <div className="modal-divider" />
 
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -1118,7 +1246,7 @@ function App() {
                 </button>
 
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textAlign: 'center', marginTop: 8 }}>
-                  Build v1.0.0
+                  Build v2.0.0
                 </div>
               </div>
             </div>
@@ -1154,6 +1282,20 @@ function App() {
             </div>
           </div>
         )}
+        {/* ── Piano Roll Editor Modal ──────────────────────────────── */}
+        {showPianoRoll && pianoRollElementId && (() => {
+          const loopEl = macros.find(m => m.id === pianoRollElementId && m.type === 'midi_loop') as MidiLoopElement | undefined;
+          if (!loopEl) return null;
+          return (
+            <PianoRollEditor
+              element={loopEl}
+              onUpdate={(updated) => handleUpdateMacro(updated)}
+              onClose={() => setShowPianoRoll(false)}
+              accentColor={accentColor}
+              colorMode={colorMode}
+            />
+          );
+        })()}
         {/* ── Tutorial Overlay ──────────────────────────────────────── */}
         {tutorialStep !== null && (
           <Tutorial
