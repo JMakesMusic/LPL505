@@ -91,4 +91,4 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: "src-tauri/target/**/bundle/**/*.{dmg,AppImage,deb,msi,exe,sig,zip,tar.gz}"
+          subject-path: "src-tauri/target/**/LPL505*"
