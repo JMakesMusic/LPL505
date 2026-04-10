@@ -123,6 +123,14 @@ function App() {
     setTutorialCompleted(true);
   };
 
+  // Auto-start tutorial on fresh install if boot prompt wasn't shown
+  useEffect(() => {
+    if (!showBootPrompt && !tutorialCompleted) {
+      startTutorial();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ─── Mode Toggle Key ─────────────────────────────────────────────────
   const [modeToggleKey, setModeToggleKey] = useState(() => loadSavedOption('modeToggleKey', 'Tab'));
 

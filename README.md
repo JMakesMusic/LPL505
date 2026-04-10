@@ -28,14 +28,15 @@ YT Tutorial on how to set it up and use it. (WIP)
 ### 1. Download the App
 You can download the installers from the **[Releases](https://github.com/JMakesMusic/LPL505/releases)** page. Under the "Assets" section, pick the correct file for your computer:
 
-| Device | File to Download |
-| :--- | :--- |
-| **Windows PC** | `LPL505_x64-setup.exe` (Recommended) or `.msi` |
-| **Mac (M series chips)** | `LPL505_aarch64.dmg` |
-| **Mac (Intel / Older)** | `LPL505_x64.dmg` |
-| **Linux (Ubuntu / Debian)** | `LPL505_amd64.deb` |
-| **Linux (Fedora / RedHat)** | `LPL505_x86_64.rpm` |
-| **Linux (General)** | `LPL505_amd64.AppImage` |
+| Device | Supported Version | File to Download |
+| :--- | :--- | :--- |
+| **Windows PC** | Latest | `LPL505_x64-setup.exe` (Recommended) or `.msi` |
+| **Mac (M series chips)** | Latest | `LPL505_aarch64.dmg` |
+| **Mac (Intel / Older)** | v2.0.0 (Legacy) | `LPL505_x64.dmg` |
+| **Linux (General)** | v2.0.0 (Legacy) | `LPL505_amd64.AppImage` / `.deb` / `.rpm` |
+
+> [!NOTE]
+> **Platform Support Update:** Starting from versions after **v2.0.0**, we have discontinued official support for Linux and Intel-based Macs to focus development on the most used platforms (Windows and Apple Silicon). Users on these discontinued platforms can still use **[Release v2.0.0](https://github.com/JMakesMusic/LPL505/releases/tag/LPL505-v2.0.0)** perfectly fine.
 
 > [!IMPORTANT]
 >Since this project is independent and open-source, your operating system may flag the app as unverified. Dont worry, the code is fully transparent and viewable right here on GitHub.
