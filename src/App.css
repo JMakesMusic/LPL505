@@ -52,15 +52,21 @@
 }
 
 [data-shape='square'] {
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
 }
 
 [data-shape='circular'] {
   --radius-sm: 9999px;
   --radius-md: 9999px;
   --radius-lg: 24px;
+}
+
+[data-shape='circular'] .create-dropdown,
+[data-shape='circular'] .config-box {
+  --radius-sm: 6px;
+  --radius-md: 10px;
 }
 
 [data-theme='light'] {
@@ -589,6 +595,7 @@ h1, h2, h3 {
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+  overflow: hidden;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   z-index: 200;
   min-width: 160px;
@@ -609,6 +616,13 @@ h1, h2, h3 {
 }
 .create-dropdown-item:hover {
   background: var(--bg-panel-hover);
+}
+
+.config-box {
+  background: var(--bg-base);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
 }
 
 @keyframes slowPulse {

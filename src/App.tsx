@@ -141,13 +141,15 @@ function App() {
   const [bgImage, setBgImage] = useState<string>(() => loadSavedOption('bgImage', ''));
   const [bgBlur, setBgBlur] = useState(() => loadSavedOption('bgBlur', 0));
   const [bgOpacity, setBgOpacity] = useState(() => loadSavedOption('bgOpacity', 1.0));
-  const [isAdjustingBg, setIsAdjustingBg] = useState(false);
+   const [isAdjustingBg, setIsAdjustingBg] = useState(false);
+   const [isAdjustingGrid, setIsAdjustingGrid] = useState(false);
   const [glowAmount, setGlowAmount] = useState(() => loadSavedOption('glowAmount', 1.0));
   const [snapToGrid, setSnapToGrid] = useState(() => loadSavedOption('snapToGrid', true));
   const [gridSize, setGridSize] = useState(() => loadSavedOption('gridSize', 50)); // in reference-space pixels
   const [gridOpacity, setGridOpacity] = useState(() => loadSavedOption('gridOpacity', 0.15));
   const [workspaceFlash, setWorkspaceFlash] = useState(() => loadSavedOption('workspaceFlash', true));
   const [elementShape, setElementShape] = useState<'square' | 'rounded' | 'circular'>(() => loadSavedOption('elementShape', 'rounded'));
+  const [borderWidth, setBorderWidth] = useState(() => loadSavedOption('borderWidth', 2));
 
   // ─── Auto-Update ────────────────────────────────────────────────────
   const [autoUpdate, setAutoUpdate] = useState(() => loadSavedOption('autoUpdate', true));
@@ -183,11 +185,12 @@ function App() {
       localStorage.setItem('505fx_gridOpacity', JSON.stringify(gridOpacity));
       localStorage.setItem('505fx_workspaceFlash', JSON.stringify(workspaceFlash));
       localStorage.setItem('505fx_elementShape', JSON.stringify(elementShape));
+      localStorage.setItem('505fx_borderWidth', JSON.stringify(borderWidth));
       localStorage.setItem('505fx_autoUpdate', JSON.stringify(autoUpdate));
     } catch (e) {
       console.error('Failed to save settings to localStorage (possibly quota exceeded):', e);
     }
-  }, [modeToggleKey, theme, colorMode, accentColor, bgImage, bgBlur, bgOpacity, glowAmount, snapToGrid, gridSize, workspaceFlash, elementShape, autoUpdate]);
+  }, [modeToggleKey, theme, colorMode, accentColor, bgImage, bgBlur, bgOpacity, glowAmount, snapToGrid, gridSize, workspaceFlash, elementShape, borderWidth, autoUpdate]);
 
   const resetTheme = () => {
     setTheme('wireframe');
@@ -197,7 +200,8 @@ function App() {
     setBgBlur(0);
     setBgOpacity(1.0);
     setGlowAmount(1.0);
-    setSnapToGrid(false);
+    setBorderWidth(2);
+    setSnapToGrid(true);
     setGridSize(50);
     setGridOpacity(0.15);
     setWorkspaceFlash(true);
@@ -752,7 +756,8 @@ function App() {
               gridSize={gridSize}
               gridOpacity={gridOpacity}
               colorMode={colorMode}
-              showGrid={isAdjustingBg}
+              borderWidth={borderWidth}
+              showGrid={isAdjustingGrid}
               onOpenPianoRoll={(elementId) => {
                 setPianoRollElementId(elementId);
                 setShowPianoRoll(true);
@@ -978,8 +983,8 @@ function App() {
                     <label>Grid Size ({gridSize}px)</label>
                     <input type="range" min="10" max="100" step="5" value={gridSize}
                       onChange={e => setGridSize(parseInt(e.target.value))}
-                      onPointerDown={() => setIsAdjustingBg(true)}
-                      onPointerUp={() => setIsAdjustingBg(false)}
+                      onPointerDown={() => { setIsAdjustingBg(true); setIsAdjustingGrid(true); }}
+                      onPointerUp={() => { setIsAdjustingBg(false); setIsAdjustingGrid(false); }}
                       style={{ width: '100%', accentColor: 'var(--accent-base)' }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
@@ -991,8 +996,8 @@ function App() {
                     <label>Grid Line Intensity ({Math.round(gridOpacity * 100)}%)</label>
                     <input type="range" min="0" max="1" step="0.01" value={gridOpacity}
                       onChange={e => setGridOpacity(parseFloat(e.target.value))}
-                      onPointerDown={() => setIsAdjustingBg(true)}
-                      onPointerUp={() => setIsAdjustingBg(false)}
+                      onPointerDown={() => { setIsAdjustingBg(true); setIsAdjustingGrid(true); }}
+                      onPointerUp={() => { setIsAdjustingBg(false); setIsAdjustingGrid(false); }}
                       style={{ width: '100%', accentColor: 'var(--accent-base)' }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
@@ -1063,6 +1068,14 @@ function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
                   <span>Off</span><span>Normal</span><span>Max</span>
                 </div>
+              </div>
+
+              <div className="input-group">
+                <label>Border Thickness ({borderWidth}px)</label>
+                <input type="range" min="0" max="10" step="1" value={borderWidth}
+                  onChange={e => setBorderWidth(parseInt(e.target.value))}
+                  style={{ width: '100%', accentColor: 'var(--accent-base)' }}
+                />
               </div>
 
               <div style={{ fontSize: '0.9rem', color: 'var(--accent-base)', fontWeight: 900, letterSpacing: '0.02em', marginBottom: 6, borderBottom: '1px solid var(--accent-base)', paddingBottom: 4, marginTop: -4 }}>Canvas Backdrop</div>
@@ -1301,6 +1314,7 @@ function App() {
               onClose={() => setShowPianoRoll(false)}
               accentColor={accentColor}
               colorMode={colorMode}
+              elementShape={elementShape}
             />
           );
         })()}

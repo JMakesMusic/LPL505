@@ -20,6 +20,7 @@ interface ButtonCanvasProps {
   gridOpacity: number;
   showGrid?: boolean;
   colorMode: 'dark' | 'light';
+  borderWidth: number;
   onOpenPianoRoll?: (elementId: string) => void;
 }
 
@@ -29,7 +30,7 @@ const REF_W = 1000;
 const REF_H = 700;
 
 const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
-  mode, macros, setMacrosLive, commitSnapshot, selectedMacroId, onSelectMacro, theme, accentColor, glowAmount, snapToGrid, gridSize, gridOpacity, showGrid, colorMode, onOpenPianoRoll
+  mode, macros, setMacrosLive, commitSnapshot, selectedMacroId, onSelectMacro, theme, accentColor, glowAmount, snapToGrid, gridSize, gridOpacity, showGrid, colorMode, borderWidth, onOpenPianoRoll
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { triggerElement, triggerFaderGlide, sendCC, sendNoteOn, sendNoteOff, totalTicksRef, isPlayingRef, timeSignatureRef, timeDenominatorRef } = useMidi();
@@ -635,7 +636,7 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
         {(() => {
           const isVisible = showGrid || (snapToGrid && mode === 'edit');
           const gridColor = colorMode === 'light' ? '0,0,0' : '255,255,255';
-          const targetOpacity = isVisible ? (showGrid ? Math.max(0.25, gridOpacity) : gridOpacity) : 0;
+          const targetOpacity = isVisible ? gridOpacity : 0;
           return (
             <div style={{
               position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
@@ -645,7 +646,7 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
               backgroundSize: `${gridSize}px ${gridSize}px`,
               backgroundPosition: '0 0',
               opacity: targetOpacity,
-              transition: 'opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), background-image 0.4s ease',
+              transition: 'opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-size 0.2s ease',
             }} />
           );
         })()}
@@ -694,8 +695,8 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
         // Selection highlight (single or multi-select via rubber band)
         const selectionBorderColor = colorMode === 'dark' ? '#ffffff' : '#000000';
         const borderStyle = (isMultiSelected || isSingleSelected)
-          ? `2px solid ${selectionBorderColor}`
-          : `2px solid ${theme === 'filled' ? 'rgba(255,255,255,0.15)' : color}`;
+          ? `${borderWidth}px solid ${selectionBorderColor}`
+          : `${borderWidth}px solid ${theme === 'filled' ? 'rgba(255,255,255,0.15)' : color}`;
 
         const faderBg = theme === 'filled' ? 'var(--bg-panel)' : isFrost ? 'rgba(128,128,128,0.15)' : isTintedFrost ? `${color}33` : isTinted ? `${color}1A` : 'transparent';
         const btnBg = theme === 'filled' ? color : isFrost ? 'rgba(128,128,128,0.15)' : isTintedFrost ? `${color}33` : isTinted ? `${color}1A` : 'transparent';
@@ -817,7 +818,7 @@ const ButtonCanvas: React.FC<ButtonCanvasProps> = ({
               onPointerLeave={() => setHoveredId(prev => prev === el.id ? null : prev)}
               style={{
                 position: 'absolute', left: screenX, top: screenY, width: screenW, height: screenH,
-                border: isSelected ? borderStyle : (isLoopActive ? `2px solid ${color}` : borderStyle),
+                border: isSelected ? borderStyle : (isLoopActive ? `${borderWidth}px solid ${color}` : borderStyle),
                 color: actualTextColor,
                 borderRadius: 'var(--radius-md)',
                 display: 'flex', flexDirection: 'column',

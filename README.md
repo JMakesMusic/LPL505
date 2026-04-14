@@ -30,7 +30,7 @@ You can download the installers from the **[Releases](https://github.com/JMakesM
 
 | Device | Supported Version | File to Download |
 | :--- | :--- | :--- |
-| **Windows PC** | Latest | `LPL505_x64-setup.exe` (Recommended) or `.msi` |
+| **Windows PC** | Latest | `LPL505_x64-setup.exe` (Recommended) |
 | **Mac (M series chips)** | Latest | `LPL505_aarch64.dmg` |
 | **Mac (Intel / Older)** | v2.0.0 (Legacy) | `LPL505_x64.dmg` |
 | **Linux (General)** | v2.0.0 (Legacy) | `LPL505_amd64.AppImage` / `.deb` / `.rpm` |

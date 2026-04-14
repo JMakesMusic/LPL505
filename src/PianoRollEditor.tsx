@@ -43,11 +43,12 @@ interface PianoRollEditorProps {
   onClose: () => void;
   accentColor: string;
   colorMode: 'dark' | 'light';
+  elementShape: 'square' | 'rounded' | 'circular';
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-const PianoRollEditor: React.FC<PianoRollEditorProps> = ({ element, onUpdate, onClose, accentColor, colorMode }) => {
+const PianoRollEditor: React.FC<PianoRollEditorProps> = ({ element, onUpdate, onClose, accentColor, colorMode, elementShape }) => {
   const { sendNoteOn, sendNoteOff, timeSignature, timeDenominator } = useMidi();
 
   // ─── State ──────────────────────────────────────────────────────────────
@@ -1125,7 +1126,7 @@ const PianoRollEditor: React.FC<PianoRollEditorProps> = ({ element, onUpdate, on
                       height: noteHeight - 2,
                       background: isNotePlaying ? '#ffffff' : accentColor,
                       opacity: isNotePlaying ? 1 : velocityAlpha,
-                      borderRadius: 3,
+                      borderRadius: elementShape === 'square' ? 0 : elementShape === 'circular' ? 9999 : 3,
                       border: isSelected ? '1.5px solid #fff' : isNotePlaying ? '1.5px solid #ffffff' : `1px solid ${accentColor}`,
                       cursor: 'grab',
                       zIndex: isNotePlaying ? 15 : isSelected ? 10 : 2,

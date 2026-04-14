@@ -142,7 +142,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
   };
 
   const quantizationConfig = el.type !== 'fader' && (
-    <div style={{ padding: 12, background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+    <div className="config-box">
       <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
         Timing & Quantization
       </label>
@@ -201,7 +201,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {el.messages.map((msg, i) => (
-          <div key={msg.id} style={{ background: 'var(--bg-base)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+          <div key={msg.id} className="config-box" style={{ padding: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 800 }}>Message {i + 1}</span>
               <Trash size={20} weight="bold" color="var(--danger)" style={{ cursor: 'pointer' }} onClick={() => set({ messages: el.messages.filter(m => m.id !== msg.id) })} />
@@ -252,7 +252,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {el.freeMessages.map((msg, i) => (
-          <div key={msg.id} style={{ background: 'var(--bg-base)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+          <div key={msg.id} className="config-box" style={{ padding: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 800 }}>Message {i + 1}</span>
               <Trash size={20} weight="bold" color="var(--danger)" style={{ cursor: 'pointer' }} onClick={() => set({ freeMessages: el.freeMessages.filter(m => m.id !== msg.id) })} />
@@ -324,7 +324,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {(el.faderKeybinds || []).map((bind, i) => (
-          <div key={bind.id} style={{ background: 'var(--bg-panel)', padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
+          <div key={bind.id} className="config-box" style={{ background: 'var(--bg-panel)', padding: '14px', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-base)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Keybind {i + 1}</span>
               <button
@@ -375,7 +375,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
               </div>
 
               {/* Timing & Glide Sections (Grouped) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px', background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+              <div className="config-box" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {/* Quantization */}
                 <div>
                   <label style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', fontWeight: 700, marginBottom: 8, display: 'block', letterSpacing: '0.02em' }}>QUANTIZE / DELAY</label>
@@ -476,7 +476,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
   // ─── Memory Button Config ──────────────────────────────────────────────
   const memoryConfig = el.type === 'memory_button' && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="input-group" style={{ border: '1px solid var(--border-color)', padding: 12, borderRadius: 'var(--radius-sm)', background: 'var(--bg-base)' }}>
+      <div className="input-group config-box">
         <label style={{ color: 'var(--accent-base)' }}>Target Memory Number (1-99)</label>
         <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: 8, lineHeight: 1.4 }}>
           Sets the Boss RC-505mk2 to this memory slot. <br />
@@ -492,7 +492,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
   // ─── MIDI Loop Config ──────────────────────────────────────────────────
   const midiLoopConfig = el.type === 'midi_loop' && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ padding: 12, background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+      <div className="config-box">
         <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
           Loop Info
         </label>
@@ -530,7 +530,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ element, updateElement, onDel
       {midiLoopConfig}
       {quantizationConfig}
 
-      <div style={{ padding: 12, background: 'var(--bg-base)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginTop: 8 }}>
+      <div className="config-box" style={{ marginTop: 8 }}>
         <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>
           Layer Order
         </label>
